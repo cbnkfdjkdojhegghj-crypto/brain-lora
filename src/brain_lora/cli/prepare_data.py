@@ -73,7 +73,9 @@ def main():
 
     # Transcript files are small. Fetch only the relevant fMRI containers:
     # validation uses the Friends HDF5 files, not Movie10.
-    _get(root, "stimuli/transcripts")
+    transcript_path = ("stimuli/transcripts/friends/s6" if args.preset == "validation"
+                       else "stimuli/transcripts")
+    _get(root, transcript_path)
     fmri_rel = []
     for subject in ("sub-01", "sub-02", "sub-03", "sub-05"):
         suffix = "_desc-s123456_bold.h5" if "friends" in tasks else "_desc-s123456_bold.h5"
