@@ -138,23 +138,7 @@ def main():
             seasons = (*seasons, 6)
         tasks = ["friends"]
         if "train" in supervised:
-            tasks.append("movie10")
-        _get(root, "stimuli/transcripts/friends")
-        if "train" in supervised:
-            _get(root, "stimuli/transcripts/movie10")
-        _fetch_fmri(root, tasks)
-        runs = find_runs(root, tasks=tuple(tasks), friends_seasons=seasons)
-        if not runs:
-            raise RuntimeError("No supervised runs discovered; check DataLad content.")
-        selected = _prepare_clips(root, runs, cache, keep_raw=args.keep_raw,
-                                  max_clips=args.max_clips)
-        runs = [r for r in runs if media_key(r) in selected]
-        train_df, val_df = build_manifests(runs, cache)
-        if "train" in supervised:
-            _write_manifest(manifest_dir / "train.tsv",
-                            train_df[train_df.task.isin(["friends", "movie10"]) &
-                                     train_df.stimulus_id.str.extract(r"friends/s(\\d+)")[0].fillna("0").astype(int).between(1, 5)
-                                     | train_df.task.eq("movie10")])
+            _write_manifest(manifest_dir / "train.tsv", train_df)
         if "validation" in supervised:
             _write_manifest(manifest_dir / "validation.tsv", val_df)
         fmri_path = out / "fmri.h5"
