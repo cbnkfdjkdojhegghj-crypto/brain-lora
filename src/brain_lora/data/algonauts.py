@@ -126,9 +126,10 @@ def find_inference_runs(data_root, split):
         transcript_root = root / "stimuli/transcripts/ood"
         for movie in OOD_MOVIES:
             for chunk in ("1", "2"):
+                # Include tracked stimuli even when DataLad has dropped the
+                # raw annex content. A completed processed cache is sufficient
+                # to regenerate manifests on a later invocation.
                 video = movie_root / movie / f"task-{movie}{chunk}_video.mkv"
-                if not video.is_file():
-                    continue
                 transcript = transcript_root / movie / f"ood_{movie}{chunk}.tsv"
                 runs.append(dict(
                     task="ood", season=None,
