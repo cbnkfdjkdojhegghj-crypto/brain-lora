@@ -101,6 +101,63 @@ def find_runs(data_root, *, tasks=("friends", "movie10"), friends_seasons=FRIEND
     return runs
 
 
+OOD_MOVIES = ("chaplin", "mononoke", "passepartout", "planetearth", "pulpfiction", "wot")
+
+
+def find_inference_runs(data_root, split):
+    """Discover stimulus-only runs for Friends S7 (ID) or the six OOD movies."""
+    root = Path(data_root)
+    runs = []
+    if split == "id":
+        transcript_files = sorted((root / "stimuli/transcripts/friends/s7").glob("*.tsv"))
+        for transcript in transcript_files:
+            stem = transcript.stem
+            video = root / "stimuli/movies/friends/s7" / f"{stem}.mkv"
+            if not video.exists():
+                raise FileNotFoundError(f"Missing ID stimulus video: {video}")
+            runs.append(dict(task="friends", season=7,
+                             stimulus_id=f"friends/s7/{stem}",
+                             video=video, transcript=transcript))
+    elif split == "ood":
+        for movie in OOD_MOVIES:
+            for chunk in (1, 2):
+                stem = f"task-{movie}{chunk}"
+                video = root / "stimuli/movies/ood" / movie / f"{stem}_video.mkv"
+                transcript = root / "stimuli/transcripts/ood" / movie / f"ood_{movie}{chunk}.tsv"
+                if not video.exists():
+                    raise FileNotFoundError(f"Missing OOD stimulus video: {video}")
+                # Chaplin is silent and intentionally has no transcript.
+                runs.append(dict(task="ood", season=None,
+                                 stimulus_id=f"ood/{movie}{chunk}",
+                                 video=video,
+                                 transcript=transcript if transcript.exists() else None))
+    else:
+        raise ValueError(f"Unknown inference split: {split}")
+    return runs
+
+
+def build_inference_manifest(runs, media_cache, split):
+    """Build target-free windows. Every window has all four subject indices."""
+    from brain_lora.data.media import cache_meta
+    rows = []
+    for run in runs:
+        media = f"{run['task']}/{Path(run['video']).stem}"
+        duration = float(cache_meta(media_cache, media)["duration_s"])
+        if run["transcript"] is not None:
+            duration = max(duration, transcript_duration(run["transcript"]))
+        for seg_idx, start in enumerate(window_starts(duration)):
+            for subject_idx, subject in enumerate(SUBJECTS):
+                item = f"{subject}/{run['stimulus_id']}"
+                rows.append(dict(
+                    subject=subject, subject_idx=subject_idx,
+                    task=run["task"], stimulus_id=run["stimulus_id"],
+                    fmri_item_id=item, media=media, split=split,
+                    segment_idx=seg_idx,
+                    segment_id=f"{item}@seg{seg_idx:03d}",
+                    segment_start_s=float(start)))
+    return pd.DataFrame(rows, columns=MANIFEST_COLUMNS)
+
+
 def media_key(run):
     """Cache key of a run's stimulus: ``"<task>/<video stem>"``."""
     return f"{run['task']}/{Path(run['video']).stem}"
