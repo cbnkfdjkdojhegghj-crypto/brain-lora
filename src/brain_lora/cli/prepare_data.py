@@ -106,13 +106,13 @@ def _write_manifest(path, frame):
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.stat().st_size > 0:
         try:
-            old = pd.read_csv(path, sep="\\t")
+            old = pd.read_csv(path, sep=chr(9))
         except pd.errors.EmptyDataError:
             old = pd.DataFrame()
         if not old.empty:
             frame = pd.concat([old, frame], ignore_index=True)
             frame = frame.drop_duplicates("segment_id", keep="last")
-    frame.to_csv(path, sep="\\t", index=False)
+    frame.to_csv(path, sep=chr(9), index=False)
 
 
 def main():
