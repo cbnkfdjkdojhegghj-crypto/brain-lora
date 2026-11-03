@@ -59,43 +59,70 @@ Hugging Face Hub on first use.
 
 ### Data
 
-Data preparation can install the original Algonauts DataLad dataset and fetch
-only the files needed by the selected preset. Install DataLad and git-annex
-first (Linux/macOS; see the
-[official dataset instructions](https://github.com/courtois-neuromod/algonauts_2025.competitors)).
+The preparation CLI supports four independently downloadable splits:
 
-**Quick pretrained-model smoke test:** you do not need the training movies or
-Movie10. Prepare only Friends season 6, and optionally just one or two clips:
+| Split | Stimuli | fMRI targets | Use |
+|---|---|---|---|
+| `train` | Friends S1-S5 + Movie10 | Available | Training |
+| `validation` | Friends S6 | Available | Local validation |
+| `id` | Friends S7 | Withheld | In-distribution prediction |
+| `ood` | Six OOD movies | Withheld | OOD prediction |
 
-```bash
-python -m brain_lora.cli.prepare_data --preset validation --max-clips 1 --out data
-```
+Install DataLad and git-annex first (Linux/macOS; see the
+[official Algonauts dataset instructions](https://github.com/courtois-neuromod/algonauts_2025.competitors)).
+The repository is installed recursively on first use. Only selected split
+content is fetched. Unique videos are downloaded, decoded, cached and dropped
+one at a time; processed cache files are retained. Existing cache entries and
+manifests are reused on subsequent runs.
 
-For a more meaningful validation run over all Friends season 6 clips:
-
-```bash
-python -m brain_lora.cli.prepare_data --preset validation --out data
-```
-
-**Full training dataset:**
+Prepare only local validation data:
 
 ```bash
-python -m brain_lora.cli.prepare_data --preset full --out data
+python -m brain_lora.cli.prepare_data --splits validation --out data
 ```
 
-The downloader processes unique videos sequentially: each raw clip is fetched,
-decoded to 2 Hz frames (336x224), 16 kHz audio and transcript cache, then
-released with `datalad drop` before the next clip. The source fMRI HDF5
-containers are consolidated into `data/fmri.h5` and dropped after successful
-processing. Processed outputs are retained and cache metadata makes video
-processing resumable. Use `--keep-raw` to disable dropping source files.
+Prepare ID or OOD stimulus-only data:
+
+```bash
+python -m brain_lora.cli.prepare_data --splits id --out data
+python -m brain_lora.cli.prepare_data --splits ood --out data
+```
+
+Prepare all three evaluation splits without the training dataset:
+
+```bash
+python -m brain_lora.cli.prepare_data \
+    --splits validation id ood --out data
+```
+
+Prepare the complete dataset:
+
+```bash
+python -m brain_lora.cli.prepare_data \
+    --splits train validation id ood --out data
+```
+
+For a small smoke test, limit each selected split to one unique clip:
+
+```bash
+python -m brain_lora.cli.prepare_data \
+    --splits validation id ood --max-clips 1 --out data
+```
 
 Outputs:
 
-* `data/media_cache/`: decoded media cache (large; retained for training);
-* `data/manifests/`: train/validation window manifests;
-* `data/fmri.h5`: z-scored parcel targets. In validation preset this contains
-  only Friends season 6 targets.
+* `data/media_cache/`: decoded 2 Hz frames, 16 kHz audio and transcript metadata.
+* `data/manifests/train.tsv`: training windows.
+* `data/manifests/val.tsv` and `validation.tsv`: Friends S6 validation windows.
+* `data/manifests/id.tsv`: Friends S7 inference windows.
+* `data/manifests/ood.tsv`: OOD movie inference windows.
+* `data/fmri.h5`: z-scored targets for selected supervised runs only.
+
+ID and OOD fMRI responses are withheld by the challenge. Their manifests and
+prediction path therefore do not require or fabricate fMRI targets. The
+preparation command never downloads the Friends S7/OOD target sample arrays
+unless separately requested; predictions are saved per window, subject,
+100-TR block and parcel.
 
 ## Pretrained models
 
@@ -108,6 +135,10 @@ it:
 python -m brain_lora.cli.hub download zfying/brain-lora lora_linear \
     --data-dir data --run-dir runs/lora_linear
 python -m brain_lora.cli.evaluate runs/lora_linear
+
+# Predict Friends S7 (ID) or OOD stimuli; no target fMRI is needed.
+python -m brain_lora.cli.predict runs/lora_linear --split id
+python -m brain_lora.cli.predict runs/lora_linear --split ood
 ```
 
 `python -m brain_lora.cli.hub export <run_dir> <out_dir>` writes a trained run
