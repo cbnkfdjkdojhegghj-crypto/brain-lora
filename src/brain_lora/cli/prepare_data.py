@@ -140,6 +140,7 @@ def main():
         if "train" in supervised:
             _write_manifest(manifest_dir / "train.tsv", train_df)
         if "validation" in supervised:
+            _write_manifest(manifest_dir / "val.tsv", val_df)
             _write_manifest(manifest_dir / "validation.tsv", val_df)
         fmri_path = out / "fmri.h5"
         write_fmri_store(runs, fmri_path)
