@@ -83,25 +83,36 @@ def _prepare_clips(root, runs, cache, *, keep_raw, max_clips=None):
     log.info("Preparing %d unique clips", len(clips))
     for i, (key, run) in enumerate(clips.items(), 1):
         video, transcript = Path(run["video"]), run.get("transcript")
-        marker = cache / f"{key}_meta.json"
-        if not marker.exists():
-            _get(root, video.relative_to(root))
+        stem = cache / key
+        marker = Path(f"{stem}_meta.json")
+        frames = Path(f"{stem}_frames.npy")
+        audio = Path(f"{stem}_audio.npy")
+        cache_complete = marker.is_file() and frames.is_file() and audio.is_file()
+
+        if cache_complete:
+            log.info("[%d/%d] cache exists, skipping: %s", i, len(clips), key)
+        else:
+            if not video.exists():
+                _get(root, video.relative_to(root))
             log.info("[%d/%d] decoding %s", i, len(clips), key)
             build_cache_entry(video, transcript, cache / Path(key).parent)
-        else:
-            log.info("[%d/%d] cache exists: %s", i, len(clips), key)
-        if not keep_raw and marker.exists():
+
+        if not keep_raw and video.exists() and marker.is_file():
             _drop(root, video)
     return set(clips)
 
 
 def _write_manifest(path, frame):
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        old = pd.read_csv(path, sep="\t")
-        frame = pd.concat([old, frame], ignore_index=True)
-        frame = frame.drop_duplicates("segment_id", keep="last")
-    frame.to_csv(path, sep="\t", index=False)
+    if path.exists() and path.stat().st_size > 0:
+        try:
+            old = pd.read_csv(path, sep="\\t")
+        except pd.errors.EmptyDataError:
+            old = pd.DataFrame()
+        if not old.empty:
+            frame = pd.concat([old, frame], ignore_index=True)
+            frame = frame.drop_duplicates("segment_id", keep="last")
+    frame.to_csv(path, sep="\\t", index=False)
 
 
 def main():
