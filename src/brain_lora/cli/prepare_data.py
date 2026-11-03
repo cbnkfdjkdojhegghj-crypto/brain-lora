@@ -1,6 +1,5 @@
 """Lazily prepare selected Algonauts splits.
 
-Examples:
   python -m brain_lora.cli.prepare_data --splits validation
   python -m brain_lora.cli.prepare_data --splits id
   python -m brain_lora.cli.prepare_data --splits ood
@@ -8,8 +7,8 @@ Examples:
   python -m brain_lora.cli.prepare_data --splits train validation id ood
 
 Train = Friends S1-S5 + Movie10; validation = Friends S6;
-ID = Friends S7; OOD = six OOD movies. ID/OOD are stimulus-only:
-their fMRI targets are withheld. DataLad and git-annex are required.
+ID = Friends S7; OOD = six OOD movies. ID/OOD fMRI targets are withheld.
+Requires DataLad and git-annex.
 """
 
 import argparse
@@ -73,7 +72,6 @@ def _fetch_fmri(root, tasks):
 
 
 def _prepare_clips(root, runs, cache, *, keep_raw, max_clips=None):
-    # Deduplicate by media key: a movie clip is shared by all four subjects.
     clips = {}
     for run in runs:
         clips.setdefault(media_key(run), run)
@@ -92,7 +90,6 @@ def _prepare_clips(root, runs, cache, *, keep_raw, max_clips=None):
             build_cache_entry(video, transcript, cache / key)
         else:
             log.info("[%d/%d] cache exists: %s", i, len(clips), key)
-        # Drop only after all derived cache files and the final metadata marker exist.
         if not keep_raw and marker.exists():
             _drop(root, video)
     return set(clips)
@@ -100,7 +97,6 @@ def _prepare_clips(root, runs, cache, *, keep_raw, max_clips=None):
 
 def _write_manifest(path, frame):
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Merge on repeated split invocations without duplicating segment IDs.
     if path.exists():
         old = pd.read_csv(path, sep="\\t")
         frame = pd.concat([old, frame], ignore_index=True)
@@ -130,7 +126,6 @@ def main():
     cache.mkdir(parents=True, exist_ok=True)
     manifest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Supervised splits: download only the relevant target containers.
     supervised = [s for s in args.splits if s in ("train", "validation")]
     if supervised:
         seasons = tuple(range(1, 6)) if "train" in supervised else ()
@@ -138,24 +133,45 @@ def main():
             seasons = (*seasons, 6)
         tasks = ["friends"]
         if "train" in supervised:
+            tasks.append("movie10")
+
+        # Fetch only transcript folders required by these splits.
+        transcript_paths = [
+            Path("stimuli/transcripts/friends") / f"s{season}"
+            for season in seasons
+        ]
+        if "train" in supervised:
+            transcript_paths.append(Path("stimuli/transcripts/movie10"))
+        _get(root, *transcript_paths)
+        _fetch_fmri(root, tasks)
+
+        runs = find_runs(root, tasks=tuple(tasks), friends_seasons=seasons)
+        if not runs:
+            raise RuntimeError("No supervised runs discovered; check DataLad content.")
+        selected = _prepare_clips(root, runs, cache, keep_raw=args.keep_raw,
+                                  max_clips=args.max_clips)
+        runs = [r for r in runs if media_key(r) in selected]
+
+        train_df, val_df = build_manifests(runs, cache)
+        if "train" in supervised:
             _write_manifest(manifest_dir / "train.tsv", train_df)
         if "validation" in supervised:
             _write_manifest(manifest_dir / "val.tsv", val_df)
             _write_manifest(manifest_dir / "validation.tsv", val_df)
-        fmri_path = out / "fmri.h5"
-        write_fmri_store(runs, fmri_path)
+
+        # Append targets so train and validation can be prepared independently.
+        write_fmri_store(runs, out / "fmri.h5")
         if not args.keep_raw:
             for source in sorted({Path(r["fmri_file"]) for r in runs}):
                 _drop(root, source)
 
-    # Stimulus-only splits: no fMRI HDF5 is fetched or expected.
+    # Target-free inference splits never fetch fMRI response containers.
     for split in (s for s in args.splits if s in ("id", "ood")):
         if split == "id":
-            _get(root, "stimuli/transcripts/friends/s7")
-            _get(root, "stimuli/movies/friends/s7")
+            _get(root, "stimuli/transcripts/friends/s7",
+                 "stimuli/movies/friends/s7")
         else:
-            _get(root, "stimuli/transcripts/ood")
-            _get(root, "stimuli/movies/ood")
+            _get(root, "stimuli/transcripts/ood", "stimuli/movies/ood")
         runs = find_inference_runs(root, split)
         selected = _prepare_clips(root, runs, cache, keep_raw=args.keep_raw,
                                   max_clips=args.max_clips)
