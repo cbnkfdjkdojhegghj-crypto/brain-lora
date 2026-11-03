@@ -184,21 +184,19 @@ def main():
             # Fetch only numbered OOD chunks (task-MOVIE1/2_video.mkv).
             # Do not datalad-get the directories: they also contain large
             # unsuffixed full-movie files that this pipeline never uses.
-            import re
-
             movie_root = root / "stimuli/movies/ood"
             transcript_root = root / "stimuli/transcripts/ood"
             selected_paths = []
             for movie in ("chaplin", "mononoke", "passepartout",
                           "planetearth", "pulpfiction", "wot"):
-                pattern = re.compile(rf"^task-{re.escape(movie)}[12]_video\\.mkv$")
-                for video in (movie_root / movie).glob("task-*_video.mkv"):
-                    if pattern.fullmatch(video.name):
-                        selected_paths.append(video.relative_to(root))
-                        chunk = video.stem.removeprefix(f"task-{movie}").removesuffix("_video")
-                        transcript = transcript_root / movie / f"ood_{movie}{chunk}.tsv"
-                        if transcript.exists():
-                            selected_paths.append(transcript.relative_to(root))
+                for chunk in ("1", "2"):
+                    video = movie_root / movie / f"task-{movie}{chunk}_video.mkv"
+                    if not video.is_file():
+                        continue
+                    selected_paths.append(video.relative_to(root))
+                    transcript = transcript_root / movie / f"ood_{movie}{chunk}.tsv"
+                    if transcript.exists():
+                        selected_paths.append(transcript.relative_to(root))
             _get(root, *selected_paths)
         runs = find_inference_runs(root, split)
         selected = _prepare_clips(root, runs, cache, keep_raw=args.keep_raw,
