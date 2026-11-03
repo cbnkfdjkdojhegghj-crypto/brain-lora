@@ -98,10 +98,10 @@ def _prepare_clips(root, runs, cache, *, keep_raw, max_clips=None):
 def _write_manifest(path, frame):
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        old = pd.read_csv(path, sep="\\t")
+        old = pd.read_csv(path, sep="\t")
         frame = pd.concat([old, frame], ignore_index=True)
         frame = frame.drop_duplicates("segment_id", keep="last")
-    frame.to_csv(path, sep="\\t", index=False)
+    frame.to_csv(path, sep="\t", index=False)
 
 
 def main():
