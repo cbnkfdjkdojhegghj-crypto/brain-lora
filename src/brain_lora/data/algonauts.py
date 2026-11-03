@@ -119,18 +119,29 @@ def find_inference_runs(data_root, split):
                              stimulus_id=f"friends/s7/{stem}",
                              video=video, transcript=transcript))
     elif split == "ood":
+        # Only accept the two numbered chunks per movie. The OOD repository
+        # also contains unsuffixed full-movie files; those are intentionally
+        # excluded from this benchmark pipeline.
+        import re
+
+        movie_root = root / "stimuli/movies/ood"
+        transcript_root = root / "stimuli/transcripts/ood"
         for movie in OOD_MOVIES:
-            for chunk in (1, 2):
-                stem = f"task-{movie}{chunk}"
-                video = root / "stimuli/movies/ood" / movie / f"{stem}_video.mkv"
-                transcript = root / "stimuli/transcripts/ood" / movie / f"ood_{movie}{chunk}.tsv"
-                if not video.exists():
-                    raise FileNotFoundError(f"Missing OOD stimulus video: {video}")
-                # Chaplin is silent and intentionally has no transcript.
-                runs.append(dict(task="ood", season=None,
-                                 stimulus_id=f"ood/{movie}{chunk}",
-                                 video=video,
-                                 transcript=transcript if transcript.exists() else None))
+            pattern = re.compile(
+                rf"^task-{re.escape(movie)}([12])_video\\.mkv$"
+            )
+            for video in sorted((movie_root / movie).glob("task-*_video.mkv")):
+                match = pattern.fullmatch(video.name)
+                if match is None:
+                    continue
+                chunk = match.group(1)
+                transcript = transcript_root / movie / f"ood_{movie}{chunk}.tsv"
+                runs.append(dict(
+                    task="ood", season=None,
+                    stimulus_id=f"ood/{movie}{chunk}",
+                    video=video,
+                    transcript=transcript if transcript.exists() else None,
+                ))
     else:
         raise ValueError(f"Unknown inference split: {split}")
     return runs
