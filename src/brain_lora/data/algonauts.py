@@ -216,14 +216,16 @@ def build_manifests(runs, media_cache):
 def write_fmri_store(runs, path):
     """Z-score every BOLD run per parcel (sample std) and store it as float16
     under its ``<subject>/<stimulus_id>`` key."""
-    with h5py.File(path, "w") as out:
+    with h5py.File(path, "a") as out:
         for run in runs:
             with h5py.File(run["fmri_file"], "r") as f:
                 x = f[run["fmri_key"]][:].astype(np.float32)
             sd = x.std(axis=0, ddof=1, keepdims=True)
             x = (x - x.mean(axis=0, keepdims=True)) / np.where(sd < 1e-8, 1.0, sd)
-            out.create_dataset(f"{run['subject']}/{run['stimulus_id']}",
-                               data=x.astype(np.float16))
+            key = f"{run['subject']}/{run['stimulus_id']}"
+            if key in out:
+                continue
+            out.create_dataset(key, data=x.astype(np.float16))
 
 
 def load_manifests(manifest_dir):
