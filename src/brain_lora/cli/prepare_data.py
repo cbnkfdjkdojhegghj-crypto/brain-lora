@@ -54,6 +54,8 @@ def main():
     ap.add_argument("--out", default="data")
     ap.add_argument("--preset", choices=("validation", "full"), default="full",
                     help="'validation' downloads only Friends S6 for pretrained-model testing.")
+    ap.add_argument("--max-clips", type=int, default=None,
+                    help="Optional cap on unique clips (use 1-2 for a smoke test).")
     ap.add_argument("--keep-raw", action="store_true",
                     help="Keep downloaded raw videos and source fMRI HDF5 files.")
     args = ap.parse_args()
@@ -91,6 +93,16 @@ def main():
     if not runs:
         raise RuntimeError("No runs found. Check the DataLad dataset and transcript files.")
     log.info("Found %d subject/run records for preset=%s", len(runs), args.preset)
+
+    # Restrict by unique stimulus, retaining every subject record for each
+    # selected clip so all four subject targets remain available.
+    if args.max_clips is not None:
+        if args.max_clips < 1:
+            raise ValueError("--max-clips must be >= 1")
+        selected = set(list(dict.fromkeys(media_key(r) for r in runs))[:args.max_clips])
+        runs = [r for r in runs if media_key(r) in selected]
+        log.info("Limited smoke test to %d unique clips (%d subject/run records)",
+                 len(selected), len(runs))
 
     # A clip may appear in four subject records. Decode each unique clip once.
     # Crucially, raw video files are never accumulated on disk.
