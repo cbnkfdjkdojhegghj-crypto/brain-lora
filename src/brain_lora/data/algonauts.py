@@ -122,19 +122,13 @@ def find_inference_runs(data_root, split):
         # Only accept the two numbered chunks per movie. The OOD repository
         # also contains unsuffixed full-movie files; those are intentionally
         # excluded from this benchmark pipeline.
-        import re
-
         movie_root = root / "stimuli/movies/ood"
         transcript_root = root / "stimuli/transcripts/ood"
         for movie in OOD_MOVIES:
-            pattern = re.compile(
-                rf"^task-{re.escape(movie)}([12])_video\\.mkv$"
-            )
-            for video in sorted((movie_root / movie).glob("task-*_video.mkv")):
-                match = pattern.fullmatch(video.name)
-                if match is None:
+            for chunk in ("1", "2"):
+                video = movie_root / movie / f"task-{movie}{chunk}_video.mkv"
+                if not video.is_file():
                     continue
-                chunk = match.group(1)
                 transcript = transcript_root / movie / f"ood_{movie}{chunk}.tsv"
                 runs.append(dict(
                     task="ood", season=None,
