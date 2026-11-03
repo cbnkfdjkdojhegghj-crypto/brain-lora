@@ -51,17 +51,17 @@ def _find_key(keys, match):
     return found[0]
 
 
-def find_runs(data_root):
-    """One record per (subject, fMRI run) with its stimulus files."""
+def find_runs(data_root, *, tasks=("friends", "movie10"), friends_seasons=FRIENDS_SEASONS):
+    """One record per selected run; supports validation-only discovery."""
     root = Path(data_root)
     runs = []
     for subject in SUBJECTS:
         keys = {}
-        for task in ("friends", "movie10"):
+        for task in tasks:
             with h5py.File(_fmri_file(root, subject, task), "r") as f:
                 keys[task] = list(f.keys())
 
-        for season in FRIENDS_SEASONS:
+        for season in (friends_seasons if "friends" in tasks else ()):
             for episode in range(1, FRIENDS_EPISODES[season] + 1):
                 for part in "abcd":
                     if (season, episode, part) in FRIENDS_SKIP:
@@ -80,7 +80,7 @@ def find_runs(data_root):
                         video=root / "stimuli/movies/friends" / f"s{season}" / f"{name}.mkv",
                         transcript=transcript))
 
-        for movie, n_chunks in MOVIE10_CHUNKS.items():
+        for movie, n_chunks in (MOVIE10_CHUNKS.items() if "movie10" in tasks else ()):
             for chunk in range(1, n_chunks + 1):
                 transcript = (root / "stimuli/transcripts/movie10" / movie /
                               f"movie10_{movie}{chunk:02d}.tsv")
