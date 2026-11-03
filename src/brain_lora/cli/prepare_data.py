@@ -87,7 +87,7 @@ def _prepare_clips(root, runs, cache, *, keep_raw, max_clips=None):
         if not marker.exists():
             _get(root, video.relative_to(root))
             log.info("[%d/%d] decoding %s", i, len(clips), key)
-            build_cache_entry(video, transcript, cache / key)
+            build_cache_entry(video, transcript, cache / Path(key).parent)
         else:
             log.info("[%d/%d] cache exists: %s", i, len(clips), key)
         if not keep_raw and marker.exists():
