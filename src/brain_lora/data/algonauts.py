@@ -225,6 +225,8 @@ def write_fmri_store(runs, path):
             key = f"{run['subject']}/{run['stimulus_id']}"
             if key in out:
                 continue
+            parent = str(Path(run["subject"]) / Path(run["stimulus_id"]).parent)
+            out.require_group(parent)
             out.create_dataset(key, data=x.astype(np.float16))
 
 
