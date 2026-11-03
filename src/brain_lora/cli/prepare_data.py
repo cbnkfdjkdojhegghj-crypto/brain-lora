@@ -148,8 +148,18 @@ def main():
         runs = find_runs(root, tasks=tuple(tasks), friends_seasons=seasons)
         if not runs:
             raise RuntimeError("No supervised runs discovered; check DataLad content.")
-        selected = _prepare_clips(root, runs, cache, keep_raw=args.keep_raw,
-                                  max_clips=args.max_clips)
+        selected = set()
+        if "train" in supervised:
+            train_runs = [r for r in runs
+                          if r["task"] == "movie10" or r["season"] != 6]
+            selected |= _prepare_clips(
+                root, train_runs, cache, keep_raw=args.keep_raw,
+                max_clips=args.max_clips)
+        if "validation" in supervised:
+            val_runs = [r for r in runs if r["season"] == 6]
+            selected |= _prepare_clips(
+                root, val_runs, cache, keep_raw=args.keep_raw,
+                max_clips=args.max_clips)
         runs = [r for r in runs if media_key(r) in selected]
 
         train_df, val_df = build_manifests(runs, cache)
