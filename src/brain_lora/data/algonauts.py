@@ -51,17 +51,17 @@ def _find_key(keys, match):
     return found[0]
 
 
-def find_runs(data_root):
-    """One record per (subject, fMRI run) with its stimulus files."""
+def find_runs(data_root, *, tasks=("friends", "movie10"), friends_seasons=FRIENDS_SEASONS):
+    """One record per selected run; supports validation-only discovery."""
     root = Path(data_root)
     runs = []
     for subject in SUBJECTS:
         keys = {}
-        for task in ("friends", "movie10"):
+        for task in tasks:
             with h5py.File(_fmri_file(root, subject, task), "r") as f:
                 keys[task] = list(f.keys())
 
-        for season in FRIENDS_SEASONS:
+        for season in (friends_seasons if "friends" in tasks else ()):
             for episode in range(1, FRIENDS_EPISODES[season] + 1):
                 for part in "abcd":
                     if (season, episode, part) in FRIENDS_SKIP:
@@ -80,7 +80,7 @@ def find_runs(data_root):
                         video=root / "stimuli/movies/friends" / f"s{season}" / f"{name}.mkv",
                         transcript=transcript))
 
-        for movie, n_chunks in MOVIE10_CHUNKS.items():
+        for movie, n_chunks in (MOVIE10_CHUNKS.items() if "movie10" in tasks else ()):
             for chunk in range(1, n_chunks + 1):
                 transcript = (root / "stimuli/transcripts/movie10" / movie /
                               f"movie10_{movie}{chunk:02d}.tsv")
@@ -99,6 +99,63 @@ def find_runs(data_root):
                         f"{movie}{chunk:02d}.mkv",
                         transcript=transcript))
     return runs
+
+
+OOD_MOVIES = ("chaplin", "mononoke", "passepartout", "planetearth", "pulpfiction", "wot")
+
+
+def find_inference_runs(data_root, split):
+    """Discover stimulus-only runs for Friends S7 (ID) or the six OOD movies."""
+    root = Path(data_root)
+    runs = []
+    if split == "id":
+        transcript_files = sorted((root / "stimuli/transcripts/friends/s7").glob("*.tsv"))
+        for transcript in transcript_files:
+            stem = transcript.stem
+            video = root / "stimuli/movies/friends/s7" / f"{stem}.mkv"
+            if not video.exists():
+                raise FileNotFoundError(f"Missing ID stimulus video: {video}")
+            runs.append(dict(task="friends", season=7,
+                             stimulus_id=f"friends/s7/{stem}",
+                             video=video, transcript=transcript))
+    elif split == "ood":
+        for movie in OOD_MOVIES:
+            for chunk in (1, 2):
+                stem = f"task-{movie}{chunk}"
+                video = root / "stimuli/movies/ood" / movie / f"{stem}_video.mkv"
+                transcript = root / "stimuli/transcripts/ood" / movie / f"ood_{movie}{chunk}.tsv"
+                if not video.exists():
+                    raise FileNotFoundError(f"Missing OOD stimulus video: {video}")
+                # Chaplin is silent and intentionally has no transcript.
+                runs.append(dict(task="ood", season=None,
+                                 stimulus_id=f"ood/{movie}{chunk}",
+                                 video=video,
+                                 transcript=transcript if transcript.exists() else None))
+    else:
+        raise ValueError(f"Unknown inference split: {split}")
+    return runs
+
+
+def build_inference_manifest(runs, media_cache, split):
+    """Build target-free windows. Every window has all four subject indices."""
+    from brain_lora.data.media import cache_meta
+    rows = []
+    for run in runs:
+        media = f"{run['task']}/{Path(run['video']).stem}"
+        duration = float(cache_meta(media_cache, media)["duration_s"])
+        if run["transcript"] is not None:
+            duration = max(duration, transcript_duration(run["transcript"]))
+        for seg_idx, start in enumerate(window_starts(duration)):
+            for subject_idx, subject in enumerate(SUBJECTS):
+                item = f"{subject}/{run['stimulus_id']}"
+                rows.append(dict(
+                    subject=subject, subject_idx=subject_idx,
+                    task=run["task"], stimulus_id=run["stimulus_id"],
+                    fmri_item_id=item, media=media, split=split,
+                    segment_idx=seg_idx,
+                    segment_id=f"{item}@seg{seg_idx:03d}",
+                    segment_start_s=float(start)))
+    return pd.DataFrame(rows, columns=MANIFEST_COLUMNS)
 
 
 def media_key(run):
@@ -159,14 +216,18 @@ def build_manifests(runs, media_cache):
 def write_fmri_store(runs, path):
     """Z-score every BOLD run per parcel (sample std) and store it as float16
     under its ``<subject>/<stimulus_id>`` key."""
-    with h5py.File(path, "w") as out:
+    with h5py.File(path, "a") as out:
         for run in runs:
             with h5py.File(run["fmri_file"], "r") as f:
                 x = f[run["fmri_key"]][:].astype(np.float32)
             sd = x.std(axis=0, ddof=1, keepdims=True)
             x = (x - x.mean(axis=0, keepdims=True)) / np.where(sd < 1e-8, 1.0, sd)
-            out.create_dataset(f"{run['subject']}/{run['stimulus_id']}",
-                               data=x.astype(np.float16))
+            key = f"{run['subject']}/{run['stimulus_id']}"
+            if key in out:
+                continue
+            parent = str(Path(run["subject"]) / Path(run["stimulus_id"]).parent)
+            out.require_group(parent)
+            out.create_dataset(key, data=x.astype(np.float16))
 
 
 def load_manifests(manifest_dir):

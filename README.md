@@ -59,21 +59,70 @@ Hugging Face Hub on first use.
 
 ### Data
 
-Download the Algonauts 2025 challenge data
-([instructions](https://github.com/courtois-neuromod/algonauts_2025.competitors)),
-then prepare it:
+The preparation CLI supports four independently downloadable splits:
+
+| Split | Stimuli | fMRI targets | Use |
+|---|---|---|---|
+| `train` | Friends S1-S5 + Movie10 | Available | Training |
+| `validation` | Friends S6 | Available | Local validation |
+| `id` | Friends S7 | Withheld | In-distribution prediction |
+| `ood` | Six OOD movies | Withheld | OOD prediction |
+
+Install DataLad and git-annex first (Linux/macOS; see the
+[official Algonauts dataset instructions](https://github.com/courtois-neuromod/algonauts_2025.competitors)).
+The repository is installed recursively on first use. Only selected split
+content is fetched. Unique videos are downloaded, decoded, cached and dropped
+one at a time; processed cache files are retained. Existing cache entries and
+manifests are reused on subsequent runs.
+
+Prepare only local validation data:
 
 ```bash
-python -m brain_lora.cli.prepare_data --algonauts-root <download> --out data
+python -m brain_lora.cli.prepare_data --splits validation --out data
 ```
 
-This writes:
+Prepare ID or OOD stimulus-only data:
 
-* `data/media_cache/`: every clip decoded once (2 Hz frames at 336x224,
-  16 kHz audio, transcript), about 130 GB;
-* `data/manifests/`: one row per subject, run and window. Training is Friends
-  seasons 1-5 plus Movie10; validation is Friends season 6;
-* `data/fmri.h5`: BOLD runs z-scored per parcel.
+```bash
+python -m brain_lora.cli.prepare_data --splits id --out data
+python -m brain_lora.cli.prepare_data --splits ood --out data
+```
+
+Prepare all three evaluation splits without the training dataset:
+
+```bash
+python -m brain_lora.cli.prepare_data \
+    --splits validation id ood --out data
+```
+
+Prepare the complete dataset:
+
+```bash
+python -m brain_lora.cli.prepare_data \
+    --splits train validation id ood --out data
+```
+
+For a small smoke test, limit each selected split to one unique clip:
+
+```bash
+python -m brain_lora.cli.prepare_data \
+    --splits validation id ood --max-clips 1 --out data
+```
+
+Outputs:
+
+* `data/media_cache/`: decoded 2 Hz frames, 16 kHz audio and transcript metadata.
+* `data/manifests/train.tsv`: training windows.
+* `data/manifests/val.tsv` and `validation.tsv`: Friends S6 validation windows.
+* `data/manifests/id.tsv`: Friends S7 inference windows.
+* `data/manifests/ood.tsv`: OOD movie inference windows.
+* `data/fmri.h5`: z-scored targets for selected supervised runs only.
+
+ID and OOD fMRI responses are withheld by the challenge. Their manifests and
+prediction path therefore do not require or fabricate fMRI targets. The
+preparation command never downloads the Friends S7/OOD target sample arrays
+unless separately requested; predictions are saved per window, subject,
+100-TR block and parcel.
 
 ## Pretrained models
 
@@ -86,6 +135,10 @@ it:
 python -m brain_lora.cli.hub download zfying/brain-lora lora_linear \
     --data-dir data --run-dir runs/lora_linear
 python -m brain_lora.cli.evaluate runs/lora_linear
+
+# Predict Friends S7 (ID) or OOD stimuli; no target fMRI is needed.
+python -m brain_lora.cli.predict runs/lora_linear --split id
+python -m brain_lora.cli.predict runs/lora_linear --split ood
 ```
 
 `python -m brain_lora.cli.hub export <run_dir> <out_dir>` writes a trained run
