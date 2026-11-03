@@ -59,21 +59,43 @@ Hugging Face Hub on first use.
 
 ### Data
 
-Download the Algonauts 2025 challenge data
-([instructions](https://github.com/courtois-neuromod/algonauts_2025.competitors)),
-then prepare it:
+Data preparation can install the original Algonauts DataLad dataset and fetch
+only the files needed by the selected preset. Install DataLad and git-annex
+first (Linux/macOS; see the
+[official dataset instructions](https://github.com/courtois-neuromod/algonauts_2025.competitors)).
+
+**Quick pretrained-model smoke test:** you do not need the training movies or
+Movie10. Prepare only Friends season 6, and optionally just one or two clips:
 
 ```bash
-python -m brain_lora.cli.prepare_data --algonauts-root <download> --out data
+python -m brain_lora.cli.prepare_data --preset validation --max-clips 1 --out data
 ```
 
-This writes:
+For a more meaningful validation run over all Friends season 6 clips:
 
-* `data/media_cache/`: every clip decoded once (2 Hz frames at 336x224,
-  16 kHz audio, transcript), about 130 GB;
-* `data/manifests/`: one row per subject, run and window. Training is Friends
-  seasons 1-5 plus Movie10; validation is Friends season 6;
-* `data/fmri.h5`: BOLD runs z-scored per parcel.
+```bash
+python -m brain_lora.cli.prepare_data --preset validation --out data
+```
+
+**Full training dataset:**
+
+```bash
+python -m brain_lora.cli.prepare_data --preset full --out data
+```
+
+The downloader processes unique videos sequentially: each raw clip is fetched,
+decoded to 2 Hz frames (336x224), 16 kHz audio and transcript cache, then
+released with `datalad drop` before the next clip. The source fMRI HDF5
+containers are consolidated into `data/fmri.h5` and dropped after successful
+processing. Processed outputs are retained and cache metadata makes video
+processing resumable. Use `--keep-raw` to disable dropping source files.
+
+Outputs:
+
+* `data/media_cache/`: decoded media cache (large; retained for training);
+* `data/manifests/`: train/validation window manifests;
+* `data/fmri.h5`: z-scored parcel targets. In validation preset this contains
+  only Friends season 6 targets.
 
 ## Pretrained models
 
